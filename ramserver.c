@@ -422,7 +422,7 @@ rserver_handle_method_call (GDBusConnection       *connection,
 
 
   // Look up the information on the procedure in the PDB
-  if (! gimp_procedural_db_proc_info (proc_name,
+  if (! gimp_procedural_db_proc_info (method_name,
                                       &proc_blurb,
                                       &proc_help,
                                       &proc_author,
@@ -444,7 +444,7 @@ rserver_handle_method_call (GDBusConnection       *connection,
 
 
   // Do the call
-  gimp_run_procedure2 (proc_name, &nvalues, nparams, actuals);
+  gimp_run_procedure2 (method_name, &nvalues, nparams, actuals);
 
 
   // Convert the values back to a GVariant
@@ -580,7 +580,7 @@ pdb_method_test (gchar *proc_name)
                                       &nparams, &nreturn_vals,
                                       &formals, &return_types))
     {
-      printf("ya messed up ya dingus");
+      fprintf (stderr, "ya messed up ya dingus\n");
       return NULL;
     }
  
@@ -625,9 +625,17 @@ pdb_method_test (gchar *proc_name)
 
 
 // methmaker- returns GDBusMethodInfo with all proc info 
-GDBusMethodInfo **methmaker(struct gimpnames *nms){
+GDBusMethodInfo **
+methmaker (struct gimpnames *nms)
+{
 //DEBUG("does it get here?");
-  GDBusMethodInfo **nfo =  g_try_malloc (309 * sizeof (GDBusMethodInfo *));
+  GDBusMethodInfo **nfo =  g_try_malloc (1 + nms->nprocs * sizeof (GDBusMethodInfo *));
+  if (nfo == NULL)
+    {
+      fprintf (stderr, "Could not allocate method information.\n");
+      return NULL;
+    }
+
   int i;
 //DEBUG("how about here?");
 //printf (" %i \n", nms->nprocs);
@@ -635,12 +643,23 @@ GDBusMethodInfo **methmaker(struct gimpnames *nms){
 /*
 error: at procedure 309 (maybe 310) pdb_method_test fails and causes the plugin to crash, specifically I think it crashes in gimp_procedural_db_proc_info
 */
-  for (i = 0; i < 308; i++)
+  fprintf (stderr, "Testing script-fu-font-map as first procedure.\n");
+  nfo[0] = pdb_method_test ("script-fu-font-map");
+  fprintf (stderr, "Done testing.\n");
+  for (i = 0; i < nms->nprocs; i++)
     {
+      // The following code is for debugging purposes.
+      if (i == 309)
+        { 
+          sleep(1);
+        }
+      fprintf (stderr, "%d: %s\n", i, nms->procnames[i]);
+      // The 
       nfo[i] = pdb_method_test(nms->procnames[i]);
     }
 //DEBUG("what about here?");
-  nfo[308]=NULL;
+  // nfo[308]=NULL;
+  nfo[nms->nprocs] = NULL;
 //DEBUG("does it get here?");
   return nfo;
 }//methmaker
@@ -659,6 +678,9 @@ run (const gchar      *name,
   static GimpParam  values[1];
   GimpPDBStatusType status = GIMP_PDB_SUCCESS;
   GimpRunMode       run_mode;
+  int               pid;    // Process ID; for debugging
+
+  pid = getpid ();
 
   /* Setting mandatory output values */
   *nreturn_vals = 1;
@@ -685,12 +707,14 @@ run (const gchar      *name,
   gnames = procnamesbuilder();
   DEBUG ("About to make methods");
 //methmaker not working properly
+  fprintf (stderr, "Hartisimo process %d is pausing ...\n", pid);
+  sleep (6);
   info = methmaker(gnames);
   DEBUG ("Done making methods");
 
 
   interface->methods = info;
-  interface->signals = NULL;
+  interface->signals = NULL; 
   interface->properties = NULL;
   interface->annotations = NULL;
 
