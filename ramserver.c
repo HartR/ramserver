@@ -52,15 +52,24 @@ struct gimpnames {
 // +---------+
 
 /*
- * The main event-handling loop.
- */
-static GMainLoop *loop = NULL;
-
-/*
  * The GDBusNodeInfo to be published to the dbus.
  */
 static GDBusNodeInfo *finalnode = NULL;
 
+/**
+ * Information on the registration id for this process.
+ */
+static guint registration_id;
+
+
+// +-----------------+------------------------------------------------
+// | Predeclarations |
+// +-----------------+
+
+void rserver_handle_method_call (GDBusConnection       *connection,
+                                 const gchar           *method_name,
+                                 GVariant              *parameters,
+                                 GDBusMethodInvocation *invocation);
 
 // +-----------------+
 // | DBUS/GIMP Stuff |
@@ -76,12 +85,14 @@ handle_method_call (GDBusConnection       *connection,
                     GVariant              *parameters,
                     GDBusMethodInvocation *invocation,
                     gpointer               user_data)
+
+
 {
 
-      rserver_handle_method_call (connection, 
-                                      method_name, 
-                                      parameters, 
-                                      invocation);
+  rserver_handle_method_call (connection, 
+			      method_name, 
+			      parameters, 
+			      invocation);
 }//handle_method_call
 
 
@@ -147,8 +158,6 @@ on_bus_acquired (GDBusConnection *connection,
                  const gchar     *name,
                  gpointer         user_data)
 {
-  guint registration_id;
-
   DEBUG("Bus acquired.");
 
   registration_id = g_dbus_connection_register_object (connection,
@@ -238,6 +247,18 @@ query (void)
 // | Handle Method Call Helpers |
 // +----------------------------+
 
+/**
+ * Replace one character by another.
+ */
+gchar *
+strrep (gchar *str, gchar target, gchar replacement)
+{
+  gchar *tmp = str;
+  while ((tmp = strchr (tmp, target)) != NULL)
+    *tmp = replacement;
+  return str;
+} // strrep
+
 //Convert a GimpParamDef to a GVariant signature
 static const gchar *
 rserver_pdb_type_to_signature (GimpPDBArgType type)
@@ -247,35 +268,51 @@ rserver_pdb_type_to_signature (GimpPDBArgType type)
 
   switch (type)
     {
-      case GIMP_PDB_INT32:
-        result = (const gchar *) G_VARIANT_TYPE_INT32;
-        break;
-      case GIMP_PDB_INT16:
-        result = (const gchar *) G_VARIANT_TYPE_INT16;
-        break;
-      case GIMP_PDB_INT8:
-        result = (const gchar *) G_VARIANT_TYPE_BYTE;
-        break;
-      case GIMP_PDB_FLOAT:
-        result = (const gchar *) G_VARIANT_TYPE_DOUBLE;
-        break;
-      case GIMP_PDB_STRING:
-        result = (const gchar *) G_VARIANT_TYPE_STRING;
-        break;
+    case GIMP_PDB_INT32:
+      result = (const gchar *) G_VARIANT_TYPE_INT32;
+      break;
+    case GIMP_PDB_INT16:
+      result = (const gchar *) G_VARIANT_TYPE_INT16;
+      break;
+    case GIMP_PDB_INT8:
+      result = (const gchar *) G_VARIANT_TYPE_BYTE;
+      break;
+    case GIMP_PDB_FLOAT:
+      result = (const gchar *) G_VARIANT_TYPE_DOUBLE;
+      break;
+    case GIMP_PDB_STRING:
+      result = (const gchar *) G_VARIANT_TYPE_STRING;
+      break;
+      //SUPPORTING ARRAY TYPES HERE?
+    case GIMP_PDB_STRINGARRAY:
+      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+      break;
+    case GIMP_PDB_INT32ARRAY:
+      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+      break;
+    case GIMP_PDB_INT16ARRAY:
+      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+      break;
+    case GIMP_PDB_INT8ARRAY:
+      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+      break;
+          case GIMP_PDB_FLOATARRAY:
+      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+      break;
+      //TO HERE
+    case GIMP_PDB_DISPLAY:
+      result = (const gchar *) G_VARIANT_TYPE_INT32;
+      break;
+    case GIMP_PDB_IMAGE:
+      result = (const gchar *) G_VARIANT_TYPE_INT32;
+      break;
+    case GIMP_PDB_LAYER:
+      result = (const gchar *) G_VARIANT_TYPE_INT32;
+      break;
 
-      case GIMP_PDB_DISPLAY:
-        result = (const gchar *) G_VARIANT_TYPE_INT32;
-        break;
-      case GIMP_PDB_IMAGE:
-        result = (const gchar *) G_VARIANT_TYPE_INT32;
-        break;
-      case GIMP_PDB_LAYER:
-        result = (const gchar *) G_VARIANT_TYPE_INT32;
-        break;
-
-      default:
-        result = (const gchar *) G_VARIANT_TYPE_INT32;
-        break;
+    default:
+      result = (const gchar *) G_VARIANT_TYPE_INT32;
+      break;
     } // switch
 
   return result;
@@ -295,6 +332,7 @@ rserver_g_variant_to_gimp_param (GVariant         *parameter,
   if (! g_variant_type_equal ((GVariantType *) paramtype,
                               g_variant_get_type (parameter)))
     {
+      DEBUG("you're not converting types correctly");
       return FALSE;
     } // g_variant_type_equal
 
@@ -302,24 +340,24 @@ rserver_g_variant_to_gimp_param (GVariant         *parameter,
 
   switch (type)
     {
-      case GIMP_PDB_INT32:
-      case GIMP_PDB_DISPLAY:
-      case GIMP_PDB_IMAGE:
-      case GIMP_PDB_LAYER:
-      case GIMP_PDB_CHANNEL:
-      case GIMP_PDB_DRAWABLE:
-      case GIMP_PDB_SELECTION:
-      case GIMP_PDB_BOUNDARY:
-      case GIMP_PDB_VECTORS:
-        param->data.d_int32 = g_variant_get_int32 (parameter);
-        return TRUE;
+    case GIMP_PDB_INT32:
+    case GIMP_PDB_DISPLAY:
+    case GIMP_PDB_IMAGE:
+    case GIMP_PDB_LAYER:
+    case GIMP_PDB_CHANNEL:
+    case GIMP_PDB_DRAWABLE:
+    case GIMP_PDB_SELECTION:
+    case GIMP_PDB_BOUNDARY:
+    case GIMP_PDB_VECTORS:
+      param->data.d_int32 = g_variant_get_int32 (parameter);
+      return TRUE;
  
-      case GIMP_PDB_STRING:
-        param->data.d_string = g_variant_dup_string (parameter, NULL);
-        return TRUE;
+    case GIMP_PDB_STRING:
+      param->data.d_string = g_variant_dup_string (parameter, NULL);
+      return TRUE;
 
-      default:
-        return FALSE;
+    default:
+      return FALSE;
     } // switch
 } // gimpbus_g_variant_to_gimp_param
 
@@ -356,22 +394,22 @@ rserver_gimp_param_to_g_variant (GimpParam value)
 {
   switch (value.type)
     {
-      case GIMP_PDB_INT32:
-      case GIMP_PDB_DISPLAY:
-      case GIMP_PDB_IMAGE:
-      case GIMP_PDB_LAYER:
-      case GIMP_PDB_CHANNEL:
-      case GIMP_PDB_DRAWABLE:
-      case GIMP_PDB_SELECTION:
-      case GIMP_PDB_BOUNDARY:
-      case GIMP_PDB_VECTORS:
-        return g_variant_new ("i", value.data.d_int32);
+    case GIMP_PDB_INT32:
+    case GIMP_PDB_DISPLAY:
+    case GIMP_PDB_IMAGE:
+    case GIMP_PDB_LAYER:
+    case GIMP_PDB_CHANNEL:
+    case GIMP_PDB_DRAWABLE:
+    case GIMP_PDB_SELECTION:
+    case GIMP_PDB_BOUNDARY:
+    case GIMP_PDB_VECTORS:
+      return g_variant_new ("i", value.data.d_int32);
 
-      case GIMP_PDB_STRING:
-        return g_variant_new ("s", value.data.d_string);
+    case GIMP_PDB_STRING:
+      return g_variant_new ("s", value.data.d_string);
 
-      default:
-        return NULL;
+    default:
+      return NULL;
     }
 } // gimpbus_gimp_param_to_g_variant
 
@@ -382,13 +420,22 @@ rserver_gimp_params_to_g_variant (GimpParam *values, int nvalues)
   GVariantBuilder  builder;   
   int              i;         
   GVariant        *val;      
-
+  DEBUG("DO I GET HERE EVEN?");
   g_variant_builder_init (&builder, G_VARIANT_TYPE_TUPLE);
   for (i = 0; i < nvalues; i++)
     {
-      
+      DEBUG ("building the list");
       val = rserver_gimp_param_to_g_variant (values[i]);
+      DEBUG ("it's going to fail here isn't it?");
+            if (val == NULL)
+        {
+          DEBUG ("failed to add GimpParam ");
+          return NULL;
+        } // if (val == NULL)
+
       g_variant_builder_add_value (&builder, val);
+      DEBUG ("perhaps here if i'm unlucky?");
+
     } // for each value
 
   return g_variant_builder_end (&builder);
@@ -398,9 +445,9 @@ rserver_gimp_params_to_g_variant (GimpParam *values, int nvalues)
 
 void
 rserver_handle_method_call (GDBusConnection       *connection,
-                                const gchar           *method_name,
-                                GVariant              *parameters,
-                                GDBusMethodInvocation *invocation)
+                            const gchar           *method_name,
+                            GVariant              *parameters,
+                            GDBusMethodInvocation *invocation)
 {
 
   gchar           *proc_name;
@@ -419,10 +466,21 @@ rserver_handle_method_call (GDBusConnection       *connection,
   gint             nvalues;          // Number of return values.
   GVariant        *result;
 
+  fprintf (stderr, "Name of the method before %s \n", method_name);
+
+  proc_name = strrep (g_strdup (method_name), '_', '-');
+
+  fprintf (stderr, "Name of the method after %s \n", proc_name);
+
+  DEBUG("WE GET HERE!");
 
 
+  /*g_dbus_method_invocation_return_dbus_error (invocation,
+    "you dun goofed",
+    "try again");
+  */
   // Look up the information on the procedure in the PDB
-  if (! gimp_procedural_db_proc_info (method_name,
+  if (! gimp_procedural_db_proc_info (proc_name,
                                       &proc_blurb,
                                       &proc_help,
                                       &proc_author,
@@ -432,30 +490,34 @@ rserver_handle_method_call (GDBusConnection       *connection,
                                       &nparams, &nreturn_vals,
                                       &formals, &return_types))
     {
-      printf("invalid procedure call");
+      DEBUG("invalid procedure call");
       return;
     } // if we can't get the information
+  DEBUG("here is the best");
 
   // Check the number of parameters
- nparams = g_variant_n_children (parameters);
+  //nparams = g_variant_n_children (parameters);
 
   // build the parameters
- rserver_g_variant_to_gimp_params (parameters, formals, &actuals);
+  rserver_g_variant_to_gimp_params (parameters, formals, &actuals);
 
-
+  DEBUG("TESTING RIGHT MERE");
   // Do the call
-  gimp_run_procedure2 (method_name, &nvalues, nparams, actuals);
+  values = gimp_run_procedure2 (proc_name, &nvalues, nparams, actuals);
+  DEBUG("over here");
 
 
   // Convert the values back to a GVariant
   result = rserver_gimp_params_to_g_variant (values+1, nvalues-1);
 
+  DEBUG("gotta be this one");
 
   // Return via DBus
   g_dbus_method_invocation_return_value (invocation, result);
+  DEBUG("actually, it's this one");
 
   // Cleanup: TODO
-  g_variant_unref (result);
+  //g_variant_unref (result);
 } // gimpbus_handle_pdb_method_call
 
 
@@ -495,13 +557,13 @@ arg_new (gchar *name,
   
   arg->ref_count = 0;
   arg->name = name;
-  arg->signature = signature;
+  arg->signature = (gchar *) signature;
   arg->annotations = annotations;
   
   return arg;
 } // arg_new
 
-//g_dbus_method_info_buil - builds GDBusMethodInfo struct
+//g_dbus_method_info_build - builds GDBusMethodInfo struct
 GDBusMethodInfo *
 g_dbus_method_info_build (gchar *name,
 			  GDBusArgInfo **in_args, 
@@ -525,15 +587,17 @@ g_dbus_method_info_build (gchar *name,
 GDBusArgInfo *
 rserver_pdb_param_to_arginfo (GimpParamDef param)
 {
- 
-  gchar *name = param.name;
+  gchar *name = strrep (g_strdup (param.name), '-', '_');
+
+  //gchar *name = param.name;
   const gchar *type = rserver_pdb_type_to_signature (param.type);
   GDBusArgInfo *result = arg_new (name, type, NULL);
- 
+  if (result == NULL)
+    {
+      fprintf (stderr, "Could not allocate argument.\n");
+    }
   return result;
 } // rserver_pdb_param_to_arginfo
-
-
 
 //procnamesbuilder - makes a gimpnames struct with all GIMP proc names and # of proc names 
 struct gimpnames *
@@ -546,9 +610,9 @@ procnamesbuilder ()
 }//gimpnames
 
 
-//pdb_method_test - given a proc name, returns the method info
+// generate_pdb_method_info - given a PDB proc name, returns the method info
 static GDBusMethodInfo *
-pdb_method_test (gchar *proc_name)
+generate_pdb_method_info (gchar *proc_name)
 {
 
   // Lots and lots and lots of fields for getting info.
@@ -602,7 +666,7 @@ pdb_method_test (gchar *proc_name)
   // Process the return values
   if (nreturn_vals > 0)
     {
-      returns = g_new (GDBusArgInfo *, nreturn_vals);
+      returns = g_new (GDBusArgInfo *, nreturn_vals+1);
       for (i = 0; i < nreturn_vals ; i++)
         {
          
@@ -614,7 +678,7 @@ pdb_method_test (gchar *proc_name)
     } // if (nreturn_vals > 0)
 
   GDBusMethodInfo * result =
-    g_dbus_method_info_build (proc_name,
+    g_dbus_method_info_build (strrep (g_strdup (proc_name), '-', '_'),//used to be proc_name
 			      args,
 			      returns,
 			      NULL);
@@ -628,8 +692,8 @@ pdb_method_test (gchar *proc_name)
 GDBusMethodInfo **
 methmaker (struct gimpnames *nms)
 {
-//DEBUG("does it get here?");
-  GDBusMethodInfo **nfo =  g_try_malloc (1 + nms->nprocs * sizeof (GDBusMethodInfo *));
+  //DEBUG("does it get here?");
+  GDBusMethodInfo **nfo = g_new (GDBusMethodInfo *, nms->nprocs + 1); 
   if (nfo == NULL)
     {
       fprintf (stderr, "Could not allocate method information.\n");
@@ -637,30 +701,37 @@ methmaker (struct gimpnames *nms)
     }
 
   int i;
-//DEBUG("how about here?");
-//printf (" %i \n", nms->nprocs);
-//printf (" %s \n", nms->procnames[311]);
-/*
-error: at procedure 309 (maybe 310) pdb_method_test fails and causes the plugin to crash, specifically I think it crashes in gimp_procedural_db_proc_info
-*/
+
+  // BUG
+  //   At procedure 309 (at least on Hart's machine), generate_pdb_method_info
+  //   fails and causes the program to crash.  It's clearly a memory error.
+  //
+  //   On Hart's machine, procedure 309 is script-fu-font-map.
+  //  
+  //   Use of GDB suggests that the error is in gimp_procedural_db_proc_info,
+  //   which shouldn't cause a crash.
+  //
+  //   Valgrind on a different machine did not reveal an error near
+  //   script-fu-font-map.  However, it did reveal an invalid write of
+  //   size 8 for file-xjt-load.  First, an invalid write of size 8.
+  //   Ah hah!  It looks like they did not allocate enough space for
+  //   the return values.
+
+  /*
+    error: at procedure 309 (maybe 310) generate_pdb_method_info fails and causes the plugin to crash, specifically I think it crashes in 
+  */
   fprintf (stderr, "Testing script-fu-font-map as first procedure.\n");
-  nfo[0] = pdb_method_test ("script-fu-font-map");
+  nfo[0] = generate_pdb_method_info ("script-fu-font-map");
   fprintf (stderr, "Done testing.\n");
   for (i = 0; i < nms->nprocs; i++)
     {
-      // The following code is for debugging purposes.
-      if (i == 309)
-        { 
-          sleep(1);
-        }
       fprintf (stderr, "%d: %s\n", i, nms->procnames[i]);
-      // The 
-      nfo[i] = pdb_method_test(nms->procnames[i]);
+      nfo[i] = generate_pdb_method_info (nms->procnames[i]);
     }
-//DEBUG("what about here?");
+  //DEBUG("what about here?");
   // nfo[308]=NULL;
   nfo[nms->nprocs] = NULL;
-//DEBUG("does it get here?");
+  //DEBUG("does it get here?");
   return nfo;
 }//methmaker
 
@@ -677,7 +748,6 @@ run (const gchar      *name,
 {
   static GimpParam  values[1];
   GimpPDBStatusType status = GIMP_PDB_SUCCESS;
-  GimpRunMode       run_mode;
   int               pid;    // Process ID; for debugging
 
   pid = getpid ();
@@ -706,9 +776,6 @@ run (const gchar      *name,
   DEBUG ("About to create gnames");
   gnames = procnamesbuilder();
   DEBUG ("About to make methods");
-//methmaker not working properly
-  fprintf (stderr, "Hartisimo process %d is pausing ...\n", pid);
-  sleep (6);
   info = methmaker(gnames);
   DEBUG ("Done making methods");
 
@@ -721,7 +788,7 @@ run (const gchar      *name,
   interfaces[0] = interface;
   interfaces[1] = NULL;
 
-    g_dbus_interface_info_generate_xml (interface, 0, xml);
+  g_dbus_interface_info_generate_xml (interface, 0, xml);
    
 
   GMainLoop *loop;
@@ -732,9 +799,9 @@ run (const gchar      *name,
   DEBUG ("About to make node.");
   finalnode = node_new(NULL, interfaces, NULL, NULL);
   DEBUG ("Made node.");
-/* g_dbus_node_info_generate_xml (finalnode, 0, xml);
- fprintf (stderr, "%s\n", xml->str);
-*/
+  /* g_dbus_node_info_generate_xml (finalnode, 0, xml);
+     fprintf (stderr, "%s\n", xml->str);
+  */
 
 
   DEBUG ("About to own name");
@@ -749,6 +816,9 @@ run (const gchar      *name,
   DEBUG ("Owned name");
 
 
+  fprintf (stderr, "ramserver process %d is pausing ...\n", pid);
+  sleep (6);
+
   // Event loop.  Wait for functions to get called asyn h.
   loop = g_main_loop_new (NULL, FALSE);
   g_main_loop_run (loop);
@@ -762,5 +832,6 @@ run (const gchar      *name,
   return;
 
 }
+
 
 
