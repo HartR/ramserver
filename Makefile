@@ -1,2 +1,3 @@
-all:
-	gimptool-2.0 --install nodeinfotest2.c
+
+default: 
+	gimptool-2.0 --build ramserver.c
