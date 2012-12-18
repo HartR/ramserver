@@ -283,23 +283,21 @@ rserver_pdb_type_to_signature (GimpPDBArgType type)
     case GIMP_PDB_STRING:
       result = (const gchar *) G_VARIANT_TYPE_STRING;
       break;
-      //SUPPORTING ARRAY TYPES HERE?
     case GIMP_PDB_STRINGARRAY:
-      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+      result = (const gchar *) G_VARIANT_TYPE_STRING_ARRAY;
       break;
     case GIMP_PDB_INT32ARRAY:
-      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+      result = (const gchar *) ((const GVariantType *) "ai");
       break;
     case GIMP_PDB_INT16ARRAY:
-      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+      result = (const gchar *) ((const GVariantType *) "an");
       break;
     case GIMP_PDB_INT8ARRAY:
-      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+      result = (const gchar *) ((const GVariantType *) "ai");
       break;
-          case GIMP_PDB_FLOATARRAY:
-      result = (const gchar *) G_VARIANT_TYPE_ARRAY;
+    case GIMP_PDB_FLOATARRAY:
+      result = (const gchar *) ((const GVariantType *) "ad");
       break;
-      //TO HERE
     case GIMP_PDB_DISPLAY:
       result = (const gchar *) G_VARIANT_TYPE_INT32;
       break;
@@ -326,6 +324,16 @@ rserver_g_variant_to_gimp_param (GVariant         *parameter,
                                  GimpPDBArgType    type,
                                  GimpParam        *param)
 {
+  unsigned long nchildren;
+  int arraycounter = 0;
+  char* tempc;
+  gint32 temp32;
+  gint8 temp8;
+  gdouble tempd;
+  gchar** sarray = NULL;
+  gint32* array32 = NULL;
+  gint8* array8 = NULL;
+  gdouble* arrayd = NULL;
 
   // Make sure that types match
   const gchar *paramtype = rserver_pdb_type_to_signature (type);
@@ -343,6 +351,7 @@ rserver_g_variant_to_gimp_param (GVariant         *parameter,
     case GIMP_PDB_INT32:
     case GIMP_PDB_DISPLAY:
     case GIMP_PDB_IMAGE:
+      
     case GIMP_PDB_LAYER:
     case GIMP_PDB_CHANNEL:
     case GIMP_PDB_DRAWABLE:
@@ -355,6 +364,57 @@ rserver_g_variant_to_gimp_param (GVariant         *parameter,
     case GIMP_PDB_STRING:
       param->data.d_string = g_variant_dup_string (parameter, NULL);
       return TRUE;
+
+    case GIMP_PDB_STRINGARRAY:
+   
+      nchildren = g_variant_n_children (parameter);
+         
+      sarray = g_try_malloc ((nchildren) * sizeof (gchar *));
+      for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
+	{
+	  g_variant_get_child (parameter, arraycounter, "s", &tempc);
+	  sarray[arraycounter] = tempc; 
+	  //fprintf(stderr, "%s\n", tempc);
+	}
+      sarray[nchildren] = NULL;
+      param->data.d_stringarray = sarray;
+      return TRUE; 
+
+    case GIMP_PDB_INT32ARRAY:
+
+      nchildren = g_variant_n_children (parameter);
+      array32 = g_try_malloc ((nchildren) * sizeof (gint32));
+      for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
+	{
+	  g_variant_get_child (parameter, arraycounter, "i", &temp32);
+	  array32[arraycounter] = temp32; 
+	}
+      param->data.d_int32array = array32;
+      return TRUE; 
+
+    case GIMP_PDB_INT8ARRAY:
+
+      nchildren = g_variant_n_children (parameter);
+      array8 = g_try_malloc ((nchildren) * sizeof (gint8));
+      for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
+	{
+	  g_variant_get_child (parameter, arraycounter, "i", &temp8);
+	  array8[arraycounter] = temp8;  
+	}
+      param->data.d_int8array = array8;
+      return TRUE; 
+
+    case GIMP_PDB_FLOATARRAY:
+
+      nchildren = g_variant_n_children (parameter);
+      arrayd = g_try_malloc ((nchildren) * sizeof (gdouble));
+      for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
+  {
+    g_variant_get_child (parameter, arraycounter, "d", &tempd);
+    arrayd[arraycounter] = tempd;  
+  }
+      param->data.d_floatarray = arrayd;
+      return TRUE; 
 
     default:
       return FALSE;
@@ -390,8 +450,11 @@ rserver_g_variant_to_gimp_params (GVariant       *parameters,
 
 
 GVariant *
-rserver_gimp_param_to_g_variant (GimpParam value)
+rserver_gimp_param_to_g_variant (GimpParam value, int * asize)
 {
+  GVariantBuilder abuilder;
+  int arrcounter = 0;
+
   switch (value.type)
     {
     case GIMP_PDB_INT32:
@@ -407,33 +470,103 @@ rserver_gimp_param_to_g_variant (GimpParam value)
 
     case GIMP_PDB_STRING:
       return g_variant_new ("s", value.data.d_string);
+      //added a ton of value cases here
+    case GIMP_PDB_INT16:
+      return g_variant_new ("n", value.data.d_int16);
+    case GIMP_PDB_INT8:
+      return g_variant_new ("i", value.data.d_int8);
+    case GIMP_PDB_FLOAT:
+      return g_variant_new ("d", value.data.d_float);
+      //STRINGARRAY
+    case GIMP_PDB_STRINGARRAY:
+      g_variant_builder_init (&abuilder, G_VARIANT_TYPE_STRING_ARRAY);
+      for(arrcounter = 0; arrcounter< *asize; arrcounter++)
+	{
+	  g_variant_builder_add_value (&abuilder, g_variant_new("s", value.data.d_stringarray[arrcounter]));
+	  fprintf(stderr, "%s",value.data.d_stringarray[arrcounter] );
+	  
+	}
+      return g_variant_builder_end(&abuilder);
+      //  g_variant_builder_clear (&abuilder);
 
+      //INT32ARRAY
+    case GIMP_PDB_INT32ARRAY:
+      
+
+      g_variant_builder_init (&abuilder, ((const GVariantType *) "ai"));
+         
+      for(arrcounter = 0; arrcounter< *asize; arrcounter++)
+	{
+	  g_variant_builder_add_value (&abuilder, g_variant_new("i", value.data.d_int32array[arrcounter]));
+	 
+	}
+
+      return g_variant_builder_end(&abuilder);
+
+      //INT16ARRAY
+    case GIMP_PDB_INT16ARRAY:
+      g_variant_builder_init (&abuilder, G_VARIANT_TYPE_TUPLE);
+      for(arrcounter = 0; arrcounter< *asize; arrcounter++)
+	{
+	  g_variant_builder_add_value (&abuilder, g_variant_new("n", value.data.d_int16array[arrcounter]));
+	 
+	}
+      return g_variant_builder_end(&abuilder);
+
+      //INT8ARRAY
+    case GIMP_PDB_INT8ARRAY:
+      //use uchar to get each bit from array
+      arrcounter = 0;
+      
+
+      g_variant_builder_init (&abuilder, ((const GVariantType *) "ai"));
+
+      for(arrcounter = 0; arrcounter< *asize; arrcounter++)
+
+	{
+	  g_variant_builder_add_value (&abuilder, g_variant_new("i", value.data.d_int8array[arrcounter]));
+	}
+   
+      return g_variant_builder_end(&abuilder);
+
+      //FLOATARRAY
+    case GIMP_PDB_FLOATARRAY:
+      g_variant_builder_init (&abuilder, G_VARIANT_TYPE_TUPLE);
+      for(arrcounter = 0; arrcounter< *asize; arrcounter++)
+	{
+	  g_variant_builder_add_value (&abuilder, g_variant_new("d", value.data.d_floatarray[arrcounter]));
+	 
+	}
+      return g_variant_builder_end(&abuilder);
     default:
       return NULL;
     }
 } // gimpbus_gimp_param_to_g_variant
 
-
+//if arraytype, get the length in the gimpparam before it
 GVariant *
 rserver_gimp_params_to_g_variant (GimpParam *values, int nvalues)
 {
   GVariantBuilder  builder;   
-  int              i;         
+  int              i, arrsize;         
   GVariant        *val;      
   DEBUG("DO I GET HERE EVEN?");
   g_variant_builder_init (&builder, G_VARIANT_TYPE_TUPLE);
   for (i = 0; i < nvalues; i++)
     {
       DEBUG ("building the list");
-      val = rserver_gimp_param_to_g_variant (values[i]);
+      if(values[i].type == GIMP_PDB_STRINGARRAY || GIMP_PDB_INT8ARRAY || GIMP_PDB_INT32ARRAY || GIMP_PDB_INT16ARRAY || GIMP_PDB_FLOATARRAY)
+        arrsize = values[i-1].data.d_int32;
+      val = rserver_gimp_param_to_g_variant (values[i], &arrsize);
       DEBUG ("it's going to fail here isn't it?");
-            if (val == NULL)
+      if (val == NULL)
         {
           DEBUG ("failed to add GimpParam ");
           return NULL;
         } // if (val == NULL)
 
       g_variant_builder_add_value (&builder, val);
+
       DEBUG ("perhaps here if i'm unlucky?");
 
     } // for each value
@@ -509,6 +642,8 @@ rserver_handle_method_call (GDBusConnection       *connection,
 
   // Convert the values back to a GVariant
   result = rserver_gimp_params_to_g_variant (values+1, nvalues-1);
+
+
 
   DEBUG("gotta be this one");
 
@@ -817,7 +952,7 @@ run (const gchar      *name,
 
 
   fprintf (stderr, "ramserver process %d is pausing ...\n", pid);
-  sleep (6);
+  //sleep (6);
 
   // Event loop.  Wait for functions to get called asyn h.
   loop = g_main_loop_new (NULL, FALSE);
